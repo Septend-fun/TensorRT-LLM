@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import enum
+import os
 from types import EllipsisType  # https://stackoverflow.com/a/66636313
 from typing import Optional, Tuple, TypeAlias, Union, cast
 
@@ -168,8 +169,10 @@ class RMSNorm(nn.Module):
                     gather=True,
                     use_gemma=self.use_gemma,
                 )
-        elif IS_FLASHINFER_AVAILABLE and hidden_states.dtype in (
-                torch.float16, torch.bfloat16):
+        elif (IS_FLASHINFER_AVAILABLE
+              and os.environ.get("TRTLLM_DISABLE_FLASHINFER_RMSNORM", "0")
+              != "1" and hidden_states.dtype in (
+                  torch.float16, torch.bfloat16)):
             from ..custom_ops import (flashinfer_fused_add_rmsnorm,
                                       flashinfer_gemma_fused_add_rmsnorm,
                                       flashinfer_gemma_rmsnorm,

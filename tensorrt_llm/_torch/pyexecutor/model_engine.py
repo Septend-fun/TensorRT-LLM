@@ -155,7 +155,13 @@ def _configure_deep_gemm_pdl() -> None:
     if _DEEP_GEMM_PDL_CONFIGURED:
         return
 
-    from tensorrt_llm import deep_gemm
+    try:
+        from tensorrt_llm import deep_gemm
+    except ImportError:
+        # DeepGEMM is optional in slim PyTorch-backend builds. Models that do
+        # not select a DeepGEMM implementation must still be able to start.
+        _DEEP_GEMM_PDL_CONFIGURED = True
+        return
 
     deep_gemm.set_pdl(os.environ.get("TRTLLM_ENABLE_PDL", "1") == "1")
     _DEEP_GEMM_PDL_CONFIGURED = True

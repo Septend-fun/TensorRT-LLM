@@ -20,7 +20,10 @@ import triton
 import triton.language as tl
 
 import tensorrt_llm.quantization.utils.fp8_utils as fp8_utils
-from tensorrt_llm import deep_gemm
+try:
+    from tensorrt_llm import deep_gemm
+except ImportError:
+    deep_gemm = None
 from tensorrt_llm._torch.memory_buffer_utils import get_memory_buffers
 from tensorrt_llm._torch.model_config import ModelConfig
 from tensorrt_llm._torch.utils import (ActivationType, AuxStreamType,

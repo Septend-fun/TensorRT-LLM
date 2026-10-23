@@ -513,7 +513,8 @@ def check_missing_libs(lib_name: str) -> list[str]:
 
 
 def generate_python_stubs_linux(venv_python: Path, deep_ep: bool,
-                                flash_mla: bool, transfer_agent_binding: bool,
+                                deep_gemm: bool, flash_mla: bool,
+                                transfer_agent_binding: bool,
                                 binding_lib_name: str):
     build_run(f"\"{venv_python}\" -m pip install nanobind")
     build_run(f"\"{venv_python}\" -m pip install pybind11-stubgen")
@@ -547,12 +548,14 @@ def generate_python_stubs_linux(venv_python: Path, deep_ep: bool,
             "-m tensorrt_llm.bindings -r -O . "
             f"-p \"{nanobind_stubgen_patterns}\" -q",
             env=env_stub_gen)
-        # Pre-import torch so deep_gemm_cpp_tllm's FP4 scalar-type registration
-        # succeeds; CLI args after `-c ...` land in sys.argv[1:] for argparse.
-        build_run(
-            f"\"{venv_python}\" -c 'import torch; from pybind11_stubgen import main; main()' "
-            "-o . deep_gemm_cpp_tllm --exit-code",
-            env=env_stub_gen)
+        if deep_gemm:
+            # Pre-import torch so deep_gemm_cpp_tllm's FP4 scalar-type
+            # registration succeeds. CLI args after `-c ...` land in
+            # sys.argv[1:] for argparse.
+            build_run(
+                f"\"{venv_python}\" -c 'import torch; from pybind11_stubgen import main; main()' "
+                "-o . deep_gemm_cpp_tllm --exit-code",
+                env=env_stub_gen)
         if flash_mla:
             build_run(
                 f"\"{venv_python}\" -m pybind11_stubgen -o . flash_mla_cpp_tllm --exit-code",
@@ -1435,9 +1438,14 @@ def main(*,
     binding_lib_file_name = binding_lib_dir.name
     install_file(binding_lib_dir, pkg_dir)
 
-    with (build_dir / "tensorrt_llm" / "deep_ep" /
-          "cuda_architectures.txt").open() as f:
-        deep_ep_cuda_architectures = f.read().strip().strip(";")
+    def get_optional_cuda_architectures(subdirectory):
+        architectures_file = (build_dir / "tensorrt_llm" / subdirectory /
+                              "cuda_architectures.txt")
+        if not architectures_file.is_file():
+            return ""
+        return architectures_file.read_text().strip().strip(";")
+
+    deep_ep_cuda_architectures = get_optional_cuda_architectures("deep_ep")
     if not deep_ep_cuda_architectures and deep_ep_dir.exists():
         if deep_ep_dir.is_symlink():
             deep_ep_dir.unlink()
@@ -1461,14 +1469,20 @@ def main(*,
             "tensorrt_llm/deep_ep/nvshmem-build/src/lib/nvshmem_transport_ibgda.so.103",
             lib_dir / "nvshmem")
 
-    install_file(get_binding_lib("deep_gemm", "deep_gemm_cpp_tllm"), pkg_dir)
-    install_tree(
-        build_dir / "tensorrt_llm" / "deep_gemm" / "python" / "deep_gemm",
-        deep_gemm_dir)
+    deep_gemm_cuda_architectures = get_optional_cuda_architectures("deep_gemm")
+    if deep_gemm_cuda_architectures:
+        install_file(get_binding_lib("deep_gemm", "deep_gemm_cpp_tllm"),
+                     pkg_dir)
+        install_tree(
+            build_dir / "tensorrt_llm" / "deep_gemm" / "python" /
+            "deep_gemm", deep_gemm_dir)
+    elif deep_gemm_dir.exists():
+        if deep_gemm_dir.is_symlink():
+            deep_gemm_dir.unlink()
+        else:
+            rmtree(deep_gemm_dir)
 
-    with (build_dir / "tensorrt_llm" / "flash_mla" /
-          "cuda_architectures.txt").open() as f:
-        flash_mla_cuda_architectures = f.read().strip().strip(";")
+    flash_mla_cuda_architectures = get_optional_cuda_architectures("flash_mla")
     if flash_mla_cuda_architectures:
         install_file(get_binding_lib("flash_mla", "flash_mla_cpp_tllm"),
                      pkg_dir)
@@ -1512,8 +1526,10 @@ def main(*,
             else:  # on linux
                 generate_python_stubs_linux(
                     venv_python, bool(deep_ep_cuda_architectures),
-                    bool(flash_mla_cuda_architectures), nixl_root is not None
-                    or mooncake_root is not None, binding_lib_file_name)
+                    bool(deep_gemm_cuda_architectures),
+                    bool(flash_mla_cuda_architectures),
+                    nixl_root is not None or mooncake_root is not None,
+                    binding_lib_file_name)
 
     if not skip_building_wheel:
         if dist_dir is None:

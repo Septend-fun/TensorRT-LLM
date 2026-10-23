@@ -25,7 +25,10 @@ import torch
 import triton  # type: ignore[import]
 
 import tensorrt_llm.quantization.utils.fp4_utils as fp4_utils
-from tensorrt_llm import deep_gemm
+try:
+    from tensorrt_llm import deep_gemm
+except ImportError:
+    deep_gemm = None
 from tensorrt_llm._torch.distributed.allreduce_helper import \
     CustomAllReduceHelper
 from tensorrt_llm._utils import get_sm_version

@@ -6772,7 +6772,9 @@ def enumerate_kernels():
         enumerate_qmma_flash_kernels(specs,
                                      sm=89,
                                      dtype='e4m3_fp32',
-                                     head_sizes=[192, 576],
+                                     # Ada FP8 paged KV is also used by GQA Spark
+                                     # with head_dim=256 and BF16 attention output.
+                                     head_sizes=[192, 256, 576],
                                      output_dtype="bf16")
 
     enumerate_imma_kernels(specs, sm=89)
