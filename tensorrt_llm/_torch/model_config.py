@@ -774,8 +774,8 @@ class ModelConfig(Generic[TConfig]):
 
         # NOTE: This is for llm-compressor's quantized checkpoints.
         elif hf_quant_config.get("quant_method") == "compressed-tensors":
-            update_quant_config_from_compressed_tensors(quant_config,
-                                                        hf_quant_config)
+            layer_quant_config = update_quant_config_from_compressed_tensors(
+                quant_config, hf_quant_config)
         elif hf_quant_config.get("quant_method") == "nvfp4":
             quant_config.quant_algo = QuantAlgo.NVFP4
             group_size = hf_quant_config.get("group_size", 16)
