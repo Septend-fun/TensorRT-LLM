@@ -117,6 +117,8 @@ PUBLIC_MODEL_ARCHITECTURES = frozenset(
         "SeedOssForCausalLM",
         "SiglipVisionModel",
         "SkyworkR1V2ForConditionalGeneration",
+        "Spark2_6ForCausalLM",
+        "Spark2_5ForCausalLM",
         "SmolLM3ForCausalLM",
         "Starcoder2ForCausalLM",
         "Step3p5ForCausalLM",

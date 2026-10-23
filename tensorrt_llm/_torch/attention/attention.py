@@ -837,6 +837,11 @@ class Attention(nn.Module):
     def apply_output_gate(self, attention_output: torch.Tensor,
                           gate: torch.Tensor) -> torch.Tensor:
         """Apply the attention output gate."""
+        if (gate.ndim == attention_output.ndim + 1 and gate.shape[-1] == 1
+                and gate.shape[-2] * self.head_dim == attention_output.shape[-1]):
+            attention_output = attention_output.view(*attention_output.shape[:-1],
+                                                     gate.shape[-2], self.head_dim)
+            return (attention_output * torch.sigmoid(gate)).flatten(-2)
         if gate.shape != attention_output.shape:
             gate = gate.reshape(attention_output.shape)
         return attention_output * torch.sigmoid(gate)
@@ -1124,6 +1129,7 @@ class Attention(nn.Module):
         attention_sinks: Optional[torch.Tensor] = None,
         relative_attention_bias: Optional[torch.Tensor] = None,
         relative_attention_max_distance: int = 0,
+        output_gate: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -1139,6 +1145,8 @@ class Attention(nn.Module):
             lora_params (Optional[dict]): The LoRA parameters.
             attention_window_size (Optional[int]): The attention window size.
             attention_mask_data (Optional[torch.Tensor]): The attention mask data.
+            output_gate (Optional[torch.Tensor]): An optional gate supplied by
+                the caller and applied to the attention output before o_proj.
         Returns:
             torch.Tensor: The output tensor.
         """
@@ -1170,6 +1178,10 @@ class Attention(nn.Module):
                 position_ids, attn_metadata)
 
         q, k, v, gate = self.preprocess_qkv(qkv, position_ids)
+        if output_gate is not None and gate is not None:
+            raise ValueError(
+                "Attention cannot receive both fused and external output gates")
+        gate = output_gate if output_gate is not None else gate
         q, k, v = self.convert_qkv(q, k, v)
 
         if attention_sinks is not None:
