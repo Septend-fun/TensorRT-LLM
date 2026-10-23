@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Mapping
+import re
+from typing import Any, Mapping, Optional
 
 from tensorrt_llm.models.modeling_utils import QuantConfig
 from tensorrt_llm.quantization.mode import QuantAlgo
@@ -21,11 +22,64 @@ from tensorrt_llm.quantization.mode import QuantAlgo
 
 def update_quant_config_from_compressed_tensors(
     quant_config: QuantConfig, hf_quant_config: Mapping[str, Any]
-) -> None:
+) -> Optional[dict[str, QuantConfig]]:
     """Mutate QuantConfig from an llm-compressor compressed-tensors config."""
     config_groups = hf_quant_config.get("config_groups")
     if config_groups is None:
         raise ValueError(f"config_groups is not set in {hf_quant_config}.")
+
+    if hf_quant_config.get("format") == "mixed-precision":
+        quant_config.quant_algo = QuantAlgo.MIXED_PRECISION
+        layer_configs: dict[str, QuantConfig] = {}
+        for group_name, group in config_groups.items():
+            weights = group["weights"]
+            inputs = group.get("input_activations")
+            if (group.get("format") == "pack-quantized"
+                    and weights.get("num_bits") == 4
+                    and weights.get("type") == "int"
+                    and weights.get("strategy") == "group"
+                    and inputs is None):
+                if weights.get("group_size") != 32:
+                    raise ValueError(
+                        f"Unsupported INT4 group_size in {group_name}: "
+                        f"{weights.get('group_size')}; supported: 32.")
+                layer_config = QuantConfig(
+                    quant_algo=QuantAlgo.W4A16_AWQ,
+                    group_size=32,
+                    has_zero_point=not weights.get("symmetric", True),
+                    pre_quant_scale=False,
+                )
+            elif (group.get("format") == "int-quantized"
+                  and weights.get("num_bits") == 8
+                  and weights.get("type") == "int"
+                  and weights.get("strategy") == "channel"
+                  and inputs is not None
+                  and inputs.get("num_bits") == 8
+                  and inputs.get("type") == "int"
+                  and inputs.get("strategy") == "token"
+                  and inputs.get("dynamic") is True):
+                layer_config = QuantConfig(
+                    quant_algo=QuantAlgo.W8A8_SQ_PER_CHANNEL)
+            else:
+                raise ValueError(
+                    f"Unsupported mixed-precision group {group_name}: {group}.")
+
+            for target in group.get("targets", []):
+                # compressed-tensors commonly uses anchored regexes. Preserve
+                # the useful module suffix as a glob consumed by the PyTorch
+                # layerwise quantization pass.
+                target = target.removeprefix("re:").removesuffix("$")
+                target = target.replace(".*", "*")
+                target = target.replace("(gate_proj|up_proj|gate_up_proj|down_proj)", "*")
+                target = target.replace("(gate_proj|up_proj|gate_up_proj)", "*")
+                if target.startswith("*"):
+                    target = "model.layers.*." + target[1:]
+                target = target.replace("q_k_v_proj", "q_proj")
+                target = target.replace("out_proj", "o_proj")
+                layer_configs[target] = layer_config
+
+        quant_config.exclude_modules = list(hf_quant_config.get("ignore", []))
+        return layer_configs
 
     # compressed-tensors keys config_groups by group name: custom recipes use
     # "group_0"; named preset schemes (e.g. FP8_DYNAMIC) use the scheme name.
@@ -75,7 +129,7 @@ def update_quant_config_from_compressed_tensors(
         quant_config.exclude_modules = list(
             set((hf_exclude_modules or []) + hf_quant_config.get("ignore", []))
         )
-        return
+        return None
 
     inputs_quant_config = group_config["input_activations"]
     inputs_quant_strategy = inputs_quant_config["strategy"]
@@ -130,3 +184,4 @@ def update_quant_config_from_compressed_tensors(
         )
     else:
         quant_config.exclude_modules = hf_quant_config.get("ignore", [])
+    return None

@@ -311,3 +311,40 @@ def test_update_quant_config_from_compressed_tensors_mxfp4_with_fp8_kv_cache():
     # The MXFP4 branch returns early; kv_cache_scheme must still be honored.
     assert quant_config.kv_cache_quant_algo == QuantAlgo.FP8
     assert set(quant_config.exclude_modules) == {"lm_head"}
+
+
+def test_update_quant_config_from_compressed_tensors_parses_spark_mixed():
+    config = {
+        "quant_method": "compressed-tensors",
+        "format": "mixed-precision",
+        "config_groups": {
+            "group_0": {
+                "format": "pack-quantized",
+                "targets": ["re:.*self_attn.q_k_v_proj$", "re:.*mlp.(gate_proj|up_proj|gate_up_proj)$"],
+                "weights": {
+                    "num_bits": 4, "type": "int", "strategy": "group",
+                    "group_size": 32, "symmetric": False,
+                },
+                "input_activations": None,
+            },
+            "group_1": {
+                "format": "int-quantized",
+                "targets": ["re:.*self_attn.out_proj$", "lm_head"],
+                "weights": {
+                    "num_bits": 8, "type": "int", "strategy": "channel",
+                },
+                "input_activations": {
+                    "num_bits": 8, "type": "int", "strategy": "token",
+                    "dynamic": True,
+                },
+            },
+        },
+    }
+    quant_config = QuantConfig()
+    layers = update_quant_config_from_compressed_tensors(quant_config, config)
+
+    assert quant_config.quant_algo == QuantAlgo.MIXED_PRECISION
+    assert layers["model.layers.*.self_attn.q_proj"].quant_algo == QuantAlgo.W4A16_AWQ
+    assert layers["model.layers.*.self_attn.q_proj"].has_zero_point
+    assert layers["model.layers.*.self_attn.o_proj"].quant_algo == QuantAlgo.W8A8_SQ_PER_CHANNEL
+    assert layers["lm_head"].quant_algo == QuantAlgo.W8A8_SQ_PER_CHANNEL

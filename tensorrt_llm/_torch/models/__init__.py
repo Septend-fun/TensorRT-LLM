@@ -92,6 +92,7 @@ __all__ = [
     "Qwen4ExpForCausalLM",
     "Qwen4ExpForConditionalGeneration",
     "SeedOssForCausalLM",
+    "Spark2_6ForCausalLM",
     "SiglipVisionModel",
     "Starcoder2ForCausalLM",
     "Step3p7ForCausalLM",

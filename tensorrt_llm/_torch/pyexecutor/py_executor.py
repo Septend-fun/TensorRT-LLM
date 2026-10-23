@@ -1697,6 +1697,10 @@ class PyExecutor:
         # Immediately take the local steady clock timestamp
         local_timestamp = get_steady_clock_now_in_seconds()
         all_rank_timestamps = self.dist.allgather(local_timestamp)
+        # The single-process worker may return the gathered scalar directly;
+        # normalize it to the multi-rank list contract before indexing.
+        if isinstance(all_rank_timestamps, (float, int)):
+            all_rank_timestamps = [all_rank_timestamps]
         if self.global_rank == 0:
             logger.info(
                 f"global_steady_clock_offset at each rank: {[local_timestamp - ts for ts in all_rank_timestamps]}"

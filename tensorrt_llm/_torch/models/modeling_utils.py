@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
+import fnmatch
 import importlib
 import inspect
 import math
@@ -386,24 +387,26 @@ def apply_layerwise_quant_config(
                 if weight_mode == WeightMode.FUSED_GATE_UP_LINEAR:
                     for n, q in quant_config_dict.items():
                         # gate_proj and up_proj share the same quant config
-                        if prefix_name + '.gate_proj' in n or prefix_name + '.gate_up_proj' in n:
+                        if (fnmatch.fnmatch(prefix_name + '.gate_proj', n)
+                                or fnmatch.fnmatch(prefix_name + '.up_proj', n)
+                                or fnmatch.fnmatch(prefix_name + '.gate_up_proj', n)):
                             module.quant_config = q
                             break
                 elif weight_mode == WeightMode.FUSED_QKV_LINEAR:
                     for n, q in quant_config_dict.items():
                         # q_proj, k_proj and v_proj share the same quant config
-                        if prefix_name + '.q_proj' in n:
+                        if fnmatch.fnmatch(prefix_name + '.q_proj', n):
                             module.quant_config = q
                             break
                 else:
                     for n, q in quant_config_dict.items():
-                        if name == n:
+                        if fnmatch.fnmatch(name, n):
                             module.quant_config = q
                             break
             elif isinstance(module, Attention):
                 for n, q in quant_config_dict.items():
                     # reuse q_proj quant config as the attention quant config
-                    if name + '.q_proj' in n:
+                    if fnmatch.fnmatch(name + '.q_proj', n):
                         module.quant_config = q
                         break
             elif hasattr(module, 'kv_a_proj_with_mqa'):

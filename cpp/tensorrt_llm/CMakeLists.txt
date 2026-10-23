@@ -295,6 +295,12 @@ endforeach()
 # Link kernel_src and cutlass_src. static internal cutlass lib overridden.
 target_link_libraries(${SHARED_TARGET} PUBLIC kernels_src cutlass_src)
 
+# kernels_src includes tinygemm2 CUDA sources when building the PyTorch
+# backend. Those sources call c10 CUDA stream APIs directly.
+if(BUILD_PYT)
+  target_link_libraries(${SHARED_TARGET} PRIVATE ${TORCH_LIBRARIES})
+endif()
+
 # Cyclic dependency of batch manager on TRT-LLM
 target_link_libraries(${BATCH_MANAGER_TARGET} INTERFACE ${SHARED_TARGET})
 # Cyclic dependency of executor on TRT-LLM
